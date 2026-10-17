@@ -93,6 +93,7 @@ class ChatRepository {
     required String messageContent,
     required String language,
   }) async* {
+    // 1. Try Supabase Edge Function
     try {
       final sessionToken = _client.auth.currentSession?.accessToken;
       final restUrl = _client.rest.url;
@@ -132,8 +133,50 @@ class ChatRepository {
       }
     } catch (_) {}
 
-    // Multi-Language AI Companion Response Simulation
-    String fallbackText = "Hello! I am your companion. I'm excited to talk with you about your selected topics! What's on your mind today?";
+    // 2. Try Direct Claude API Key if passed via environment
+    const directApiKey = String.fromEnvironment('ANTHROPIC_API_KEY');
+    if (directApiKey.isNotEmpty) {
+      try {
+        final url = Uri.parse('https://api.anthropic.com/v1/messages');
+        final request = http.Request('POST', url);
+        request.headers.addAll({
+          'x-api-key': directApiKey,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+        });
+        request.body = jsonEncode({
+          'model': 'claude-3-5-sonnet-20241022',
+          'max_tokens': 1024,
+          'system': 'You are a personalized AI companion. Respond in $language.',
+          'messages': [
+            {'role': 'user', 'content': messageContent}
+          ],
+          'stream': true,
+        });
+
+        final response = await request.send();
+        if (response.statusCode == 200) {
+          await for (final chunk in response.stream.transform(utf8.decoder)) {
+            final lines = chunk.split('\n');
+            for (var line in lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  final json = jsonDecode(line.substring(6));
+                  if (json['type'] == 'content_block_delta' && json['delta'] != null) {
+                    final textDelta = json['delta']['text'];
+                    if (textDelta != null) yield textDelta as String;
+                  }
+                } catch (_) {}
+              }
+            }
+          }
+          return;
+        }
+      } catch (_) {}
+    }
+
+    // 3. Multi-Language Companion Fallback Simulation
+    String fallbackText = "Hello! I am your AI companion. I'm excited to talk with you about your selected topics! What's on your mind today?";
 
     final lowerMsg = messageContent.toLowerCase();
     if (language == 'Hindi' || lowerMsg.contains('namaste') || lowerMsg.contains('kya') || lowerMsg.contains('kaise') || lowerMsg.contains('hai') || lowerMsg.contains('ho') || lowerMsg.contains('aap')) {

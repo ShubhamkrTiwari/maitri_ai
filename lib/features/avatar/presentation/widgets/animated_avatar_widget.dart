@@ -30,6 +30,12 @@ class _AnimatedAvatarWidgetState extends State<AnimatedAvatarWidget>
   late AnimationController _mouthController;
   late Animation<double> _mouthAnimation;
 
+  late AnimationController _headBobController;
+  late Animation<double> _headBobAnimation;
+
+  late AnimationController _eyeBlinkController;
+  late Animation<double> _eyeBlinkAnimation;
+
   @override
   void initState() {
     super.initState();
@@ -44,12 +50,44 @@ class _AnimatedAvatarWidgetState extends State<AnimatedAvatarWidget>
 
     _mouthController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 250),
+      duration: const Duration(milliseconds: 220),
     );
 
-    _mouthAnimation = Tween<double>(begin: 3.0, end: 16.0).animate(
+    _mouthAnimation = Tween<double>(begin: 3.0, end: 18.0).animate(
       CurvedAnimation(parent: _mouthController, curve: Curves.easeInOut),
     );
+
+    _headBobController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 320),
+    );
+
+    _headBobAnimation = Tween<double>(begin: 0.0, end: -5.0).animate(
+      CurvedAnimation(parent: _headBobController, curve: Curves.easeInOut),
+    );
+
+    _eyeBlinkController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 140),
+    );
+
+    _eyeBlinkAnimation = Tween<double>(begin: 1.0, end: 0.05).animate(
+      CurvedAnimation(parent: _eyeBlinkController, curve: Curves.easeInOut),
+    );
+
+    _startBlinkTimer();
+  }
+
+  void _startBlinkTimer() {
+    Future.delayed(Duration(milliseconds: 2500 + (DateTime.now().millisecond % 1500)), () {
+      if (mounted) {
+        _eyeBlinkController.forward().then((_) {
+          _eyeBlinkController.reverse().then((_) {
+            _startBlinkTimer();
+          });
+        });
+      }
+    });
   }
 
   @override
@@ -57,9 +95,12 @@ class _AnimatedAvatarWidgetState extends State<AnimatedAvatarWidget>
     super.didUpdateWidget(oldWidget);
     if (widget.state == AvatarAnimState.talking) {
       _mouthController.repeat(reverse: true);
+      _headBobController.repeat(reverse: true);
     } else {
       _mouthController.stop();
       _mouthController.reset();
+      _headBobController.stop();
+      _headBobController.reset();
     }
   }
 
@@ -67,6 +108,8 @@ class _AnimatedAvatarWidgetState extends State<AnimatedAvatarWidget>
   void dispose() {
     _pulseController.dispose();
     _mouthController.dispose();
+    _headBobController.dispose();
+    _eyeBlinkController.dispose();
     super.dispose();
   }
 
@@ -117,13 +160,13 @@ class _AnimatedAvatarWidgetState extends State<AnimatedAvatarWidget>
             height: widget.size,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: outfitColor.withOpacity(0.15),
+              color: outfitColor.withValues(alpha: 0.15),
               border: Border.all(color: outfitColor, width: 3),
               boxShadow: [
                 BoxShadow(
-                  color: outfitColor.withOpacity(0.3),
-                  blurRadius: widget.state == AvatarAnimState.talking ? 18 : 10,
-                  spreadRadius: widget.state == AvatarAnimState.talking ? 4 : 1,
+                  color: outfitColor.withValues(alpha: 0.35),
+                  blurRadius: widget.state == AvatarAnimState.talking ? 20 : 10,
+                  spreadRadius: widget.state == AvatarAnimState.talking ? 5 : 1,
                 ),
               ],
             ),
@@ -132,18 +175,26 @@ class _AnimatedAvatarWidgetState extends State<AnimatedAvatarWidget>
                 alignment: Alignment.center,
                 children: [
                   if (customImage != null) ...[
-                    // Photo Avatar Mode
-                    Image(
-                      image: customImage,
-                      width: widget.size,
-                      height: widget.size,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _build2DAvatar(skinColor, hairColor, widget.size),
+                    // Photo Avatar Mode with Head Motion
+                    AnimatedBuilder(
+                      animation: _headBobAnimation,
+                      builder: (context, child) {
+                        return Transform.translate(
+                          offset: Offset(0, widget.state == AvatarAnimState.talking ? _headBobAnimation.value : 0.0),
+                          child: Image(
+                            image: customImage,
+                            width: widget.size,
+                            height: widget.size,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => _build2DAvatar(skinColor, hairColor, widget.size),
+                          ),
+                        );
+                      },
                     ),
 
-                    // Talking Lip Sync / Face Movement Overlay over Photo
+                    // Talking Lip Sync / Face Mouth Overlay over Photo
                     Positioned(
-                      bottom: widget.size * 0.22,
+                      bottom: widget.size * 0.20,
                       child: AnimatedBuilder(
                         animation: _mouthAnimation,
                         builder: (context, child) {
@@ -158,12 +209,12 @@ class _AnimatedAvatarWidgetState extends State<AnimatedAvatarWidget>
                             width: widget.size * 0.28,
                             height: mouthHeight,
                             decoration: BoxDecoration(
-                              color: Colors.redAccent.shade100.withOpacity(0.9),
+                              color: Colors.redAccent.shade100.withValues(alpha: 0.95),
                               borderRadius: BorderRadius.circular(mouthHeight / 2),
-                              border: Border.all(color: Colors.pink.shade900, width: 1),
+                              border: Border.all(color: Colors.pink.shade900, width: 1.5),
                               boxShadow: const [
                                 BoxShadow(
-                                  color: Colors.black26,
+                                  color: Colors.black38,
                                   blurRadius: 4,
                                   offset: Offset(0, 1),
                                 ),
@@ -206,86 +257,127 @@ class _AnimatedAvatarWidgetState extends State<AnimatedAvatarWidget>
   }
 
   Widget _build2DAvatar(Color skinColor, Color hairColor, double size) {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        // Hair Back
-        if (widget.avatar.hair == 'long')
-          Positioned(
-            top: size * 0.15,
-            child: Container(
-              width: size * 0.75,
-              height: size * 0.65,
-              decoration: BoxDecoration(
-                color: hairColor,
-                borderRadius: BorderRadius.circular(size * 0.3),
-              ),
-            ),
-          ),
-
-        // Face Circle
-        Container(
-          width: size * 0.65,
-          height: size * 0.65,
-          decoration: BoxDecoration(
-            color: skinColor,
-            shape: BoxShape.circle,
-          ),
-        ),
-
-        // Short Hair Top
-        if (widget.avatar.hair == 'short' || widget.avatar.hair == 'curly')
-          Positioned(
-            top: size * 0.16,
-            child: Container(
-              width: size * 0.6,
-              height: size * 0.22,
-              decoration: BoxDecoration(
-                color: hairColor,
-                borderRadius: BorderRadius.circular(size * 0.2),
-              ),
-            ),
-          ),
-
-        // Eyes
-        Positioned(
-          top: size * 0.38,
-          child: SizedBox(
-            width: size * 0.4,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildEye(size),
-                _buildEye(size),
-              ],
-            ),
-          ),
-        ),
-
-        // Mouth
-        Positioned(
-          bottom: size * 0.26,
-          child: AnimatedBuilder(
-            animation: _mouthAnimation,
-            builder: (context, child) {
-              double height = 4.0;
-              if (widget.state == AvatarAnimState.talking) {
-                height = _mouthAnimation.value;
-              } else if (widget.state == AvatarAnimState.happy) {
-                height = 8.0;
-              }
-              return Container(
-                width: size * 0.22,
-                height: height,
-                decoration: BoxDecoration(
-                  color: Colors.redAccent.shade100,
-                  borderRadius: BorderRadius.circular(height / 2),
+    return AnimatedBuilder(
+      animation: _headBobAnimation,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(0, widget.state == AvatarAnimState.talking ? _headBobAnimation.value : 0.0),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // Hair Back
+              if (widget.avatar.hair == 'long')
+                Positioned(
+                  top: size * 0.15,
+                  child: Container(
+                    width: size * 0.75,
+                    height: size * 0.65,
+                    decoration: BoxDecoration(
+                      color: hairColor,
+                      borderRadius: BorderRadius.circular(size * 0.3),
+                    ),
+                  ),
                 ),
-              );
-            },
+
+              // Face Circle
+              Container(
+                width: size * 0.65,
+                height: size * 0.65,
+                decoration: BoxDecoration(
+                  color: skinColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+
+              // Short Hair Top
+              if (widget.avatar.hair == 'short' || widget.avatar.hair == 'curly')
+                Positioned(
+                  top: size * 0.16,
+                  child: Container(
+                    width: size * 0.6,
+                    height: size * 0.22,
+                    decoration: BoxDecoration(
+                      color: hairColor,
+                      borderRadius: BorderRadius.circular(size * 0.2),
+                    ),
+                  ),
+                ),
+
+              // Eyebrows
+              Positioned(
+                top: size * 0.32,
+                child: SizedBox(
+                  width: size * 0.42,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildEyebrow(size, hairColor, isLeft: true),
+                      _buildEyebrow(size, hairColor, isLeft: false),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Eyes with Blinking
+              Positioned(
+                top: size * 0.38,
+                child: SizedBox(
+                  width: size * 0.4,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildEye(size),
+                      _buildEye(size),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Mouth with Lip Sync
+              Positioned(
+                bottom: size * 0.26,
+                child: AnimatedBuilder(
+                  animation: _mouthAnimation,
+                  builder: (context, child) {
+                    double height = 4.0;
+                    if (widget.state == AvatarAnimState.talking) {
+                      height = _mouthAnimation.value;
+                    } else if (widget.state == AvatarAnimState.happy) {
+                      height = 10.0;
+                    }
+                    return Container(
+                      width: size * 0.22,
+                      height: height,
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent.shade100,
+                        borderRadius: BorderRadius.circular(height / 2),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
+        );
+      },
+    );
+  }
+
+  Widget _buildEyebrow(double parentSize, Color hairColor, {required bool isLeft}) {
+    double tilt = isLeft ? 0.1 : -0.1;
+    if (widget.state == AvatarAnimState.thinking) tilt = isLeft ? -0.2 : 0.2;
+    if (widget.state == AvatarAnimState.happy) tilt = 0.0;
+
+    return Transform.rotate(
+      angle: tilt,
+      child: Container(
+        width: parentSize * 0.09,
+        height: parentSize * 0.02,
+        decoration: BoxDecoration(
+          color: hairColor,
+          borderRadius: BorderRadius.circular(4),
         ),
-      ],
+      ),
     );
   }
 
@@ -301,13 +393,21 @@ class _AnimatedAvatarWidgetState extends State<AnimatedAvatarWidget>
       );
     }
 
-    return Container(
-      width: parentSize * 0.07,
-      height: parentSize * 0.07,
-      decoration: const BoxDecoration(
-        color: Colors.black87,
-        shape: BoxShape.circle,
-      ),
+    return AnimatedBuilder(
+      animation: _eyeBlinkAnimation,
+      builder: (context, child) {
+        return Transform.scale(
+          scaleY: _eyeBlinkAnimation.value,
+          child: Container(
+            width: parentSize * 0.07,
+            height: parentSize * 0.07,
+            decoration: const BoxDecoration(
+              color: Colors.black87,
+              shape: BoxShape.circle,
+            ),
+          ),
+        );
+      },
     );
   }
 }
